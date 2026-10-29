@@ -1,0 +1,22 @@
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+
+import ForgotPasswordScreen from "../auth/ForgotPasswordScreen";
+import LoginScreen from "../auth/LoginScreen";
+import RegisterScreen from "../auth/RegisterScreen";
+import ResetPasswordScreen from "../screens/ResetPasswordScreen";
+
+const Stack = createNativeStackNavigator();
+
+export default function AuthNavigator() {
+  return (
+    <Stack.Navigator
+      initialRouteName="Login"
+      screenOptions={{ headerShown: false }}
+    >
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+    </Stack.Navigator>
+  );
+}
