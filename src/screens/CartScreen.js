@@ -1,7 +1,7 @@
 import {
   Alert,
-  FlatList,
   Image,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,140 +13,179 @@ import { useCart } from "../context/CartContext";
 export default function CartScreen({ navigation }) {
   const { cartItems, updateQuantity, removeFromCart, total } = useCart();
 
-  const formatPrice = (price) => `${Number(price).toLocaleString()} RWF`;
+  const formatPrice = (price) => `${Number(price || 0).toLocaleString()} RWF`;
+
+  const itemCount = cartItems.reduce(
+    (sum, item) => sum + Number(item.quantity || 0),
+    0,
+  );
 
   function handleRemove(item) {
+    // Alert.alert is not consistently supported on web.
+    if (typeof window !== "undefined" && window.confirm) {
+      const confirmed = window.confirm(`Remove ${item.name} from your cart?`);
+
+      if (confirmed) {
+        removeFromCart(item.id ?? item._id);
+      }
+
+      return;
+    }
+
     Alert.alert("Remove product", `Remove ${item.name} from your cart?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Remove",
         style: "destructive",
-        onPress: () => removeFromCart(item.id),
+        onPress: () => removeFromCart(item.id ?? item._id),
       },
     ]);
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>My Cart</Text>
-        <Text style={styles.subtitle}>
-          {cartItems.reduce((sum, item) => sum + item.quantity, 0)} item(s) in
-          your cart
-        </Text>
-      </View>
-
-      <FlatList
-        data={cartItems}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={
-          cartItems.length === 0 ? styles.emptyContainer : styles.list
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>🛍️</Text>
-            <Text style={styles.emptyTitle}>Your cart is empty</Text>
-            <Text style={styles.emptyText}>
-              Explore our products and add your favourites.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.shopButton}
-              onPress={() => navigation.navigate("Products")}
-            >
-              <Text style={styles.shopButtonText}>Continue Shopping</Text>
-            </TouchableOpacity>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.item}>
-            {item.image ? (
-              <Image
-                source={{ uri: item.image }}
-                style={styles.productImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <Text style={styles.placeholderText}>No image</Text>
-              </View>
-            )}
-
-            <View style={styles.details}>
-              <Text style={styles.category}>{item.category ?? "Product"}</Text>
-
-              <Text style={styles.name}>{item.name}</Text>
-
-              <Text style={styles.price}>{formatPrice(item.price)}</Text>
-
-              <View style={styles.bottomRow}>
-                <View style={styles.quantityControl}>
-                  <TouchableOpacity
-                    style={styles.quantityButton}
-                    onPress={() => updateQuantity(item.id, item.quantity - 1)}
-                  >
-                    <Text style={styles.quantityButtonText}>−</Text>
-                  </TouchableOpacity>
-
-                  <Text style={styles.quantity}>{item.quantity}</Text>
-
-                  <TouchableOpacity
-                    style={styles.quantityButton}
-                    onPress={() => updateQuantity(item.id, item.quantity + 1)}
-                  >
-                    <Text style={styles.quantityButtonText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity onPress={() => handleRemove(item)}>
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.lineTotal}>
-                Subtotal: {formatPrice(Number(item.price) * item.quantity)}
-              </Text>
-            </View>
+  function renderCartItem({ item }) {
+    return (
+      <View style={styles.item}>
+        {item.image || item.imageUrl ? (
+          <Image
+            source={{ uri: item.image || item.imageUrl }}
+            style={styles.productImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Text style={styles.placeholderText}>No image</Text>
           </View>
         )}
-      />
 
-      {cartItems.length > 0 && (
-        <View style={styles.summary}>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>{formatPrice(total)}</Text>
+        <View style={styles.details}>
+          <Text style={styles.category}>{item.category ?? "Product"}</Text>
+
+          <Text style={styles.name}>{item.name || "Unnamed Product"}</Text>
+
+          <Text style={styles.price}>{formatPrice(item.price)}</Text>
+
+          <View style={styles.bottomRow}>
+            <View style={styles.quantityControl}>
+              <TouchableOpacity
+                style={styles.quantityButton}
+                onPress={() =>
+                  updateQuantity(item.id ?? item._id, Number(item.quantity) - 1)
+                }
+                accessibilityLabel="Decrease quantity"
+              >
+                <Text style={styles.quantityButtonText}>−</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.quantity}>{item.quantity}</Text>
+
+              <TouchableOpacity
+                style={styles.quantityButton}
+                onPress={() =>
+                  updateQuantity(item.id ?? item._id, Number(item.quantity) + 1)
+                }
+                accessibilityLabel="Increase quantity"
+              >
+                <Text style={styles.quantityButtonText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity onPress={() => handleRemove(item)}>
+              <Text style={styles.removeText}>Remove</Text>
+            </TouchableOpacity>
           </View>
 
-          <Text style={styles.deliveryNote}>
-            Delivery fee will be calculated at checkout.
+          <Text style={styles.lineTotal}>
+            Subtotal: {formatPrice(Number(item.price) * Number(item.quantity))}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.pageContent}
+      showsVerticalScrollIndicator
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.header}>
+        <Text style={styles.title}>My Cart</Text>
+
+        <Text style={styles.subtitle}>{itemCount} item(s) in your cart</Text>
+      </View>
+
+      {cartItems.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>🛍️</Text>
+
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+
+          <Text style={styles.emptyText}>
+            Explore our products and add your favourites.
           </Text>
 
-          <View style={styles.divider} />
-
-          <View style={styles.summaryRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatPrice(total)}</Text>
+          <TouchableOpacity
+            style={styles.shopButton}
+            onPress={() => navigation.navigate("Products")}
+          >
+            <Text style={styles.shopButtonText}>Continue Shopping</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <View style={styles.list}>
+            {cartItems.map((item, index) => (
+              <View key={String(item.id ?? item._id ?? index)}>
+                {renderCartItem({ item })}
+              </View>
+            ))}
           </View>
 
-          <TouchableOpacity
-            style={styles.checkoutButton}
-            onPress={() => navigation.navigate("Checkout")}
-          >
-            <Text style={styles.checkoutText}>Proceed to Checkout →</Text>
-          </TouchableOpacity>
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Subtotal</Text>
 
-          <Text style={styles.secureNote}>D&G STORE · QUALITY AND STYLE</Text>
-        </View>
+              <Text style={styles.summaryValue}>{formatPrice(total)}</Text>
+            </View>
+
+            <Text style={styles.deliveryNote}>
+              Delivery fee will be calculated at checkout.
+            </Text>
+
+            <View style={styles.divider} />
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+
+              <Text style={styles.totalValue}>{formatPrice(total)}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.checkoutButton}
+              onPress={() => navigation.navigate("Checkout")}
+            >
+              <Text style={styles.checkoutText}>Proceed to Checkout →</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.secureNote}>D&G STORE · QUALITY AND STYLE</Text>
+          </View>
+        </>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    minHeight: 0,
     backgroundColor: "#F8F7F5",
+  },
+
+  pageContent: {
+    flexGrow: 1,
+    paddingBottom: 30,
   },
 
   header: {
@@ -171,17 +210,14 @@ const styles = StyleSheet.create({
 
   list: {
     padding: 14,
-    paddingBottom: 20,
-  },
-
-  emptyContainer: {
-    flexGrow: 1,
-    justifyContent: "center",
+    paddingBottom: 5,
   },
 
   empty: {
     alignItems: "center",
+    justifyContent: "center",
     padding: 24,
+    minHeight: 300,
   },
 
   emptyIcon: {
@@ -193,6 +229,7 @@ const styles = StyleSheet.create({
     fontSize: 21,
     fontWeight: "800",
     color: "#25211E",
+    textAlign: "center",
   },
 
   emptyText: {
@@ -251,6 +288,7 @@ const styles = StyleSheet.create({
 
   details: {
     flex: 1,
+    minWidth: 0,
     marginLeft: 13,
     justifyContent: "center",
   },
@@ -328,10 +366,14 @@ const styles = StyleSheet.create({
   },
 
   summary: {
+    marginHorizontal: 14,
+    marginTop: 4,
+    marginBottom: 10,
     padding: 18,
     backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: "#EAE6E1",
+    borderWidth: 1,
+    borderColor: "#EAE6E1",
+    borderRadius: 14,
   },
 
   summaryRow: {
@@ -339,6 +381,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginVertical: 5,
+    gap: 12,
   },
 
   summaryLabel: {

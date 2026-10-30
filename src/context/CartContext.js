@@ -5,39 +5,58 @@ const CartContext = createContext(null);
 export function CartProvider({ children }) {
   const [cartItems, setCartItems] = useState([]);
 
-  // Add a product to the cart
-  const addToCart = (product) => {
-    setCartItems((currentItems) => {
-      const existingItem = currentItems.find((item) => item.id === product.id);
+  // Add a product with the quantity selected by the user
+  const addToCart = (product, quantity = 1) => {
+    const productId = product.id ?? product._id;
+    const selectedQuantity = Math.max(1, Math.min(100, Number(quantity) || 1));
 
+    if (productId == null) {
+      throw new Error("This product does not have a valid ID.");
+    }
+
+    setCartItems((currentItems) => {
+      const existingItem = currentItems.find(
+        (item) => String(item.id ?? item._id) === String(productId),
+      );
+
+      // If the product already exists, add the selected quantity
       if (existingItem) {
         return currentItems.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+          String(item.id ?? item._id) === String(productId)
+            ? {
+                ...item,
+                quantity: Number(item.quantity || 0) + selectedQuantity,
+              }
             : item,
         );
       }
 
+      // If it is a new product, save the selected quantity
       return [
         ...currentItems,
         {
           ...product,
-          quantity: 1,
+          id: productId,
+          quantity: selectedQuantity,
         },
       ];
     });
   };
 
-  // Update product quantity
+  // Update the quantity of a product already in the cart
   const updateQuantity = (id, quantity) => {
-    if (quantity <= 0) {
+    const selectedQuantity = Number(quantity);
+
+    if (!Number.isFinite(selectedQuantity) || selectedQuantity <= 0) {
       removeFromCart(id);
       return;
     }
 
     setCartItems((currentItems) =>
       currentItems.map((item) =>
-        item.id === id ? { ...item, quantity } : item,
+        String(item.id ?? item._id) === String(id)
+          ? { ...item, quantity: selectedQuantity }
+          : item,
       ),
     );
   };
@@ -45,7 +64,7 @@ export function CartProvider({ children }) {
   // Remove a product from the cart
   const removeFromCart = (id) => {
     setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== id),
+      currentItems.filter((item) => String(item.id ?? item._id) !== String(id)),
     );
   };
 
@@ -54,17 +73,17 @@ export function CartProvider({ children }) {
     setCartItems([]);
   };
 
-  // Calculate the total price
+  // Calculate the total price of all products
   const total = useMemo(() => {
     return cartItems.reduce(
-      (sum, item) => sum + Number(item.price) * item.quantity,
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
       0,
     );
   }, [cartItems]);
 
-  // Count all product quantities
+  // Count the total number of individual items in the cart
   const itemCount = useMemo(() => {
-    return cartItems.reduce((sum, item) => sum + item.quantity, 0);
+    return cartItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
   }, [cartItems]);
 
   return (

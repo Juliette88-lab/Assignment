@@ -1,80 +1,107 @@
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import { API_BASE_URL } from "./config";
 
-// Create a new order
-export async function createOrder(orderData) {
-  const response = await fetch(`${API_BASE_URL}/api/orders`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(orderData),
-  });
+// Get the saved authentication token.
+async function getAccessToken() {
+  let token = null;
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to create order.");
+  if (Platform.OS === "web") {
+    token = globalThis.localStorage?.getItem("accessToken") ?? null;
+  } else {
+    token = await SecureStore.getItemAsync("accessToken");
   }
 
-  return data.order;
-}
-
-// Get all orders
-export async function getOrders() {
-  const response = await fetch(`${API_BASE_URL}/api/orders`, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to load orders.");
+  if (!token) {
+    throw new Error("Please log in before accessing your orders.");
   }
 
-  return data.orders;
+  return token;
 }
 
-// Get one order by ID
-export async function getOrderById(id) {
-  const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
-    headers: {
-      Accept: "application/json",
-    },
-  });
+// Prepare headers for authenticated requests.
+async function getAuthHeaders(includeJson = false) {
+  const token = await getAccessToken();
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Order not found.");
-  }
-
-  return data.order;
+  return {
+    Accept: "application/json",
+    ...(includeJson ? { "Content-Type": "application/json" } : {}),
+    Authorization: `Bearer ${token}`,
+  };
 }
 
-// Delete one order by ID
-export async function deleteOrder(id) {
-  const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
-    method: "DELETE",
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
+// Read the server response safely.
+async function readResponse(response) {
   const text = await response.text();
   let data = {};
 
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    data = {};
+    throw new Error("The server returned an invalid response.");
   }
 
   if (!response.ok) {
-    throw new Error(data.message || "Failed to delete order.");
+    throw new Error(data.message || "The request failed.");
   }
 
   return data;
+}
+
+// Create a new order for the logged-in user.
+export async function createOrder(orderData) {
+  const headers = await getAuthHeaders(true);
+
+  const response = await fetch(`${API_BASE_URL}/api/orders`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(orderData),
+  });
+
+  const data = await readResponse(response);
+  return data.order;
+}
+
+// Get orders belonging to the logged-in user.
+export async function getOrders() {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(`${API_BASE_URL}/api/orders`, {
+    method: "GET",
+    headers,
+  });
+
+  const data = await readResponse(response);
+  return data.orders;
+}
+
+// Get one order by ID.
+export async function getOrderById(id) {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/orders/${encodeURIComponent(id)}`,
+    {
+      method: "GET",
+      headers,
+    },
+  );
+
+  const data = await readResponse(response);
+  return data.order;
+}
+
+// Delete one order by ID.
+export async function deleteOrder(id) {
+  const headers = await getAuthHeaders();
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/orders/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers,
+    },
+  );
+
+  return await readResponse(response);
 }

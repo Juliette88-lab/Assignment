@@ -58,7 +58,6 @@ const products = [
     price: 12000,
     image: "https://images.unsplash.com/photo-1603252109303-2751441dd157?w=700",
   },
-
   {
     id: 6,
     name: "Running Sneakers",
@@ -94,7 +93,6 @@ const products = [
     price: 18000,
     image: "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?w=700",
   },
-
   {
     id: 11,
     name: "Ladies Handbag",
@@ -130,7 +128,6 @@ const products = [
     price: 25000,
     image: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=700",
   },
-
   {
     id: 16,
     name: "Gold Necklace",
@@ -166,7 +163,6 @@ const products = [
     price: 18000,
     image: "https://images.unsplash.com/photo-1524805444758-089113d48a6d?w=700",
   },
-
   {
     id: 21,
     name: "Lipstick",
@@ -202,7 +198,6 @@ const products = [
     price: 6000,
     image: "https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?w=700",
   },
-
   {
     id: 26,
     name: "Electric Kettle",
@@ -245,16 +240,31 @@ const products = [
 // ========================================
 
 function authenticateToken(req, res, next) {
-  const token = req.headers.authorization?.split(" ")[1];
+  const authorization = req.headers.authorization;
 
-  if (!token) {
+  if (!authorization || !authorization.startsWith("Bearer ")) {
     return res.status(401).json({
       message: "Please log in to access this resource.",
     });
   }
 
+  const token = authorization.slice(7).trim();
+
+  if (!token) {
+    return res.status(401).json({
+      message: "Authentication token is required.",
+    });
+  }
+
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    if (!decoded.userId) {
+      return res.status(401).json({
+        message: "Invalid authentication token.",
+      });
+    }
+
     req.userId = decoded.userId;
     next();
   } catch (error) {
@@ -263,6 +273,10 @@ function authenticateToken(req, res, next) {
     });
   }
 }
+
+// ========================================
+// HELPER FUNCTIONS
+// ========================================
 
 function publicUser(user) {
   return {
@@ -303,6 +317,7 @@ function mapOrder(row) {
 
 // ========================================
 // API HEALTH CHECK
+// GET /api
 // ========================================
 
 app.get("/api", (req, res) => {
@@ -415,7 +430,8 @@ app.post("/api/auth/login", async (req, res) => {
 
     const [rows] = await db.execute(
       `SELECT id, name, email, password, phone, residence
-       FROM users WHERE email = ?`,
+       FROM users
+       WHERE email = ?`,
       [email.trim().toLowerCase()],
     );
 
@@ -435,9 +451,14 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     const accessToken = jwt.sign(
-      { userId: user.id, email: user.email },
+      {
+        userId: user.id,
+        email: user.email,
+      },
       JWT_SECRET,
-      { expiresIn: "1h" },
+      {
+        expiresIn: "1h",
+      },
     );
 
     return res.json({
@@ -456,23 +477,30 @@ app.post("/api/auth/login", async (req, res) => {
 
 // ========================================
 // GET PROFILE
+// GET /api/auth/profile
 // ========================================
 
 app.get("/api/auth/profile", authenticateToken, async (req, res) => {
   try {
     const [rows] = await db.execute(
       `SELECT id, name, email, phone, residence
-       FROM users WHERE id = ?`,
+         FROM users
+         WHERE id = ?`,
       [req.userId],
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: "User not found." });
+      return res.status(404).json({
+        message: "User not found.",
+      });
     }
 
-    return res.json({ user: publicUser(rows[0]) });
+    return res.json({
+      user: publicUser(rows[0]),
+    });
   } catch (error) {
     console.error("Get profile error:", error);
+
     return res.status(500).json({
       message: "Unable to retrieve profile.",
     });
@@ -481,6 +509,7 @@ app.get("/api/auth/profile", authenticateToken, async (req, res) => {
 
 // ========================================
 // UPDATE PROFILE
+// PUT /api/auth/profile
 // ========================================
 
 app.put("/api/auth/profile", authenticateToken, async (req, res) => {
@@ -489,28 +518,37 @@ app.put("/api/auth/profile", authenticateToken, async (req, res) => {
 
     const [found] = await db.execute(
       `SELECT id, name, email, phone, residence
-       FROM users WHERE id = ?`,
+         FROM users
+         WHERE id = ?`,
       [req.userId],
     );
 
     if (found.length === 0) {
-      return res.status(404).json({ message: "User not found." });
+      return res.status(404).json({
+        message: "User not found.",
+      });
     }
 
     const current = found[0];
+
     const newName = name === undefined ? current.name : name;
+
     const newEmail =
       email === undefined
         ? current.email
         : typeof email === "string"
           ? email.trim().toLowerCase()
           : email;
+
     const newPhone = phone === undefined ? current.phone || "" : phone;
+
     const newResidence =
       residence === undefined ? current.residence || "" : residence;
 
     if (typeof newName !== "string" || !newName.trim()) {
-      return res.status(400).json({ message: "Name cannot be empty." });
+      return res.status(400).json({
+        message: "Name cannot be empty.",
+      });
     }
 
     if (
@@ -523,7 +561,9 @@ app.put("/api/auth/profile", authenticateToken, async (req, res) => {
     }
 
     if (typeof newPhone !== "string") {
-      return res.status(400).json({ message: "Phone must be a string." });
+      return res.status(400).json({
+        message: "Phone must be a string.",
+      });
     }
 
     if (typeof newResidence !== "string") {
@@ -533,7 +573,8 @@ app.put("/api/auth/profile", authenticateToken, async (req, res) => {
     }
 
     const [duplicate] = await db.execute(
-      "SELECT id FROM users WHERE email = ? AND id <> ?",
+      `SELECT id FROM users
+         WHERE email = ? AND id <> ?`,
       [newEmail, req.userId],
     );
 
@@ -545,8 +586,8 @@ app.put("/api/auth/profile", authenticateToken, async (req, res) => {
 
     await db.execute(
       `UPDATE users
-       SET name = ?, email = ?, phone = ?, residence = ?
-       WHERE id = ?`,
+         SET name = ?, email = ?, phone = ?, residence = ?
+         WHERE id = ?`,
       [
         newName.trim(),
         newEmail,
@@ -581,14 +622,12 @@ app.put("/api/auth/profile", authenticateToken, async (req, res) => {
   }
 });
 
-/* ========================================
-   FORGOT PASSWORD
-   POST /api/auth/forgot-password
-======================================== */
+// ========================================
+// FORGOT PASSWORD
+// POST /api/auth/forgot-password
+// DEMO IMPLEMENTATION
+// ========================================
 
-// DEMO ONLY:
-// Creates a short-lived reset token and returns it to the app.
-// In production, send the token through a verified email instead.
 app.post("/api/auth/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -601,9 +640,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailPattern.test(normalizedEmail)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       return res.status(400).json({
         message: "Please enter a valid email address.",
       });
@@ -621,34 +658,30 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     }
 
     const user = users[0];
-
-    // Generate a cryptographically secure, random token.
     const resetToken = crypto.randomBytes(32).toString("hex");
 
-    // Store only the SHA-256 hash of the token.
     const tokenHash = crypto
       .createHash("sha256")
       .update(resetToken)
       .digest("hex");
 
-    // Allow only one active reset token per user.
     await db.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", [
       user.id,
     ]);
 
-    // Token expires after 15 minutes.
     await db.execute(
       `INSERT INTO password_reset_tokens
-        (user_id, token_hash, expires_at)
+       (user_id, token_hash, expires_at)
        VALUES (
-        ?,
-        ?,
-        DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)
+         ?,
+         ?,
+         DATE_ADD(UTC_TIMESTAMP(), INTERVAL 15 MINUTE)
        )`,
       [user.id, tokenHash],
     );
 
-    // Demo only: the app receives the token directly.
+    // DEMO ONLY:
+    // A production application should send the token by verified email.
     return res.status(200).json({
       message: "Email verified for demo. You can now reset your password.",
       demoToken: resetToken,
@@ -662,6 +695,12 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     });
   }
 });
+
+// ========================================
+// RESET PASSWORD
+// POST /api/auth/reset-password
+// ========================================
+
 app.post("/api/auth/reset-password", async (req, res) => {
   let connection;
 
@@ -708,9 +747,12 @@ app.post("/api/auth/reset-password", async (req, res) => {
     await connection.beginTransaction();
 
     const [rows] = await connection.execute(
-      `SELECT prt.id AS reset_id, prt.user_id
+      `SELECT
+         prt.id AS reset_id,
+         prt.user_id
        FROM password_reset_tokens AS prt
-       INNER JOIN users AS u ON u.id = prt.user_id
+       INNER JOIN users AS u
+         ON u.id = prt.user_id
        WHERE prt.token_hash = ?
          AND u.email = ?
          AND prt.expires_at > UTC_TIMESTAMP()
@@ -730,7 +772,6 @@ app.post("/api/auth/reset-password", async (req, res) => {
 
     const resetRecord = rows[0];
 
-    // Hash the new password before saving it.
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await connection.execute("UPDATE users SET password = ? WHERE id = ?", [
@@ -738,7 +779,6 @@ app.post("/api/auth/reset-password", async (req, res) => {
       resetRecord.user_id,
     ]);
 
-    // Delete this token and any other outstanding tokens for the user.
     await connection.execute(
       "DELETE FROM password_reset_tokens WHERE user_id = ?",
       [resetRecord.user_id],
@@ -772,6 +812,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
 
 // ========================================
 // GET ALL PRODUCTS
+// GET /api/products
 // ========================================
 
 app.get("/api/products", (req, res) => {
@@ -803,6 +844,7 @@ app.get("/api/products", (req, res) => {
 
 // ========================================
 // GET ONE PRODUCT
+// GET /api/products/:id
 // ========================================
 
 app.get("/api/products/:id", (req, res) => {
@@ -819,9 +861,11 @@ app.get("/api/products/:id", (req, res) => {
 
 // ========================================
 // CREATE ORDER
+// POST /api/orders
+// AUTHENTICATION REQUIRED
 // ========================================
 
-app.post("/api/orders", async (req, res) => {
+app.post("/api/orders", authenticateToken, async (req, res) => {
   try {
     const { fullName, phone, address, items } = req.body;
 
@@ -839,13 +883,22 @@ app.post("/api/orders", async (req, res) => {
     }
 
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "Your cart is empty." });
+      return res.status(400).json({
+        message: "Your cart is empty.",
+      });
     }
 
     const orderItems = [];
 
     for (const item of items) {
+      if (!item || typeof item !== "object") {
+        return res.status(400).json({
+          message: "Invalid order item.",
+        });
+      }
+
       const product = products.find((p) => p.id === Number(item.id));
+
       const quantity = Number(item.quantity);
 
       if (
@@ -872,22 +925,14 @@ app.post("/api/orders", async (req, res) => {
 
     const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
 
-    let userId = null;
-    const token = req.headers.authorization?.split(" ")[1];
-
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        userId = decoded.userId;
-      } catch {
-        // Guest checkout remains available.
-      }
-    }
+    // Never trust a user ID sent in the request body.
+    // Use only the ID from the verified authentication token.
+    const userId = req.userId;
 
     const [result] = await db.execute(
       `INSERT INTO orders
-       (user_id, full_name, phone, address, items, total, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'Pending')`,
+         (user_id, full_name, phone, address, items, total, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'Pending')`,
       [
         userId,
         fullName.trim(),
@@ -898,9 +943,17 @@ app.post("/api/orders", async (req, res) => {
       ],
     );
 
-    const [rows] = await db.execute("SELECT * FROM orders WHERE id = ?", [
-      result.insertId,
-    ]);
+    const [rows] = await db.execute(
+      `SELECT * FROM orders
+         WHERE id = ? AND user_id = ?`,
+      [result.insertId, userId],
+    );
+
+    if (rows.length === 0) {
+      return res.status(500).json({
+        message: "Order was created but could not be retrieved.",
+      });
+    }
 
     return res.status(201).json({
       message: "Order created successfully.",
@@ -916,14 +969,18 @@ app.post("/api/orders", async (req, res) => {
 });
 
 // ========================================
-// GET ALL ORDERS
-// Development/testing endpoint.
+// GET THE LOGGED-IN USER'S ORDERS
+// GET /api/orders
+// AUTHENTICATION REQUIRED
 // ========================================
 
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", authenticateToken, async (req, res) => {
   try {
     const [rows] = await db.execute(
-      "SELECT * FROM orders ORDER BY created_at DESC, id DESC",
+      `SELECT * FROM orders
+         WHERE user_id = ?
+         ORDER BY created_at DESC, id DESC`,
+      [req.userId],
     );
 
     return res.json({
@@ -940,26 +997,36 @@ app.get("/api/orders", async (req, res) => {
 });
 
 // ========================================
-// GET ONE ORDER
+// GET ONE OF THE LOGGED-IN USER'S ORDERS
+// GET /api/orders/:id
+// AUTHENTICATION REQUIRED
 // ========================================
 
-app.get("/api/orders/:id", async (req, res) => {
+app.get("/api/orders/:id", authenticateToken, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
 
     if (!Number.isInteger(orderId) || orderId <= 0) {
-      return res.status(400).json({ message: "Invalid order ID." });
+      return res.status(400).json({
+        message: "Invalid order ID.",
+      });
     }
 
-    const [rows] = await db.execute("SELECT * FROM orders WHERE id = ?", [
-      orderId,
-    ]);
+    const [rows] = await db.execute(
+      `SELECT * FROM orders
+         WHERE id = ? AND user_id = ?`,
+      [orderId, req.userId],
+    );
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: "Order not found." });
+      return res.status(404).json({
+        message: "Order not found.",
+      });
     }
 
-    return res.json({ order: mapOrder(rows[0]) });
+    return res.json({
+      order: mapOrder(rows[0]),
+    });
   } catch (error) {
     console.error("Get order error:", error);
 
@@ -970,26 +1037,46 @@ app.get("/api/orders/:id", async (req, res) => {
 });
 
 // ========================================
-// DELETE ORDER
+// DELETE THE LOGGED-IN USER'S ORDER
+// DELETE /api/orders/:id
+// AUTHENTICATION REQUIRED
 // ========================================
 
-app.delete("/api/orders/:id", async (req, res) => {
+app.delete("/api/orders/:id", authenticateToken, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
 
     if (!Number.isInteger(orderId) || orderId <= 0) {
-      return res.status(400).json({ message: "Invalid order ID." });
+      return res.status(400).json({
+        message: "Invalid order ID.",
+      });
     }
 
-    const [rows] = await db.execute("SELECT * FROM orders WHERE id = ?", [
-      orderId,
-    ]);
+    // Find the order only if it belongs to this user.
+    const [rows] = await db.execute(
+      `SELECT * FROM orders
+         WHERE id = ? AND user_id = ?`,
+      [orderId, req.userId],
+    );
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: "Order not found." });
+      return res.status(404).json({
+        message: "Order not found.",
+      });
     }
 
-    await db.execute("DELETE FROM orders WHERE id = ?", [orderId]);
+    // Delete only the order owned by this user.
+    const [result] = await db.execute(
+      `DELETE FROM orders
+         WHERE id = ? AND user_id = ?`,
+      [orderId, req.userId],
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        message: "Order not found.",
+      });
+    }
 
     return res.json({
       message: "Order deleted successfully.",
